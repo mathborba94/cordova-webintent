@@ -2,6 +2,7 @@ package com.borismus.webintent;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.*;
 
 import org.apache.cordova.CordovaActivity;
 import org.json.JSONArray;
@@ -20,13 +21,13 @@ import org.apache.cordova.PluginResult;
 /**
  * WebIntent is a PhoneGap plugin that bridges Android intents and web
  * applications:
- * 
+ *
  * 1. web apps can spawn intents that call native Android applications. 2.
  * (after setting up correct intent filters for PhoneGap applications), Android
  * intents can be handled by PhoneGap web applications.
- * 
+ *
  * @author boris@borismus.com
- * 
+ *
  */
 public class WebIntent extends CordovaPlugin {
 
@@ -45,20 +46,35 @@ public class WebIntent extends CordovaPlugin {
                 }
 
                 // Parse the arguments
-				final CordovaResourceApi resourceApi = webView.getResourceApi();
+                final CordovaResourceApi resourceApi = webView.getResourceApi();
                 JSONObject obj = args.getJSONObject(0);
                 String type = obj.has("type") ? obj.getString("type") : null;
                 Uri uri = obj.has("url") ? resourceApi.remapUri(Uri.parse(obj.getString("url"))) : null;
                 JSONObject extras = obj.has("extras") ? obj.getJSONObject("extras") : null;
-                Map<String, String> extrasMap = new HashMap<String, String>();
+                Map<String, Object> extrasMap = new HashMap<String, Object>();
 
                 // Populate the extras if any exist
                 if (extras != null) {
                     JSONArray extraNames = extras.names();
                     for (int i = 0; i < extraNames.length(); i++) {
                         String key = extraNames.getString(i);
-                        String value = extras.getString(key);
-                        extrasMap.put(key, value);
+                        Object v = extras.get(key);
+                        if (v instanceof Integer || v instanceof Long) {
+                            long intToUse = ((Number)v).longValue();
+                            extrasMap.put(key, intToUse);
+                        } else if (v instanceof Boolean) {
+                            boolean boolToUse = ((Boolean)v).booleanValue();
+                            extrasMap.put(key, boolToUse);
+                        } else if (v instanceof Float || v instanceof Double) {
+                            double floatToUse = ((Number)v).doubleValue();
+                            extrasMap.put(key, floatToUse);
+                        } else if (JSONObject.NULL.equals(v)) {
+                            Object nullToUse = null;
+                            extrasMap.put(key, nullToUse);
+                        } else {
+                            String stringToUse = extras.getString(key);
+                            extrasMap.put(key, stringToUse);
+                        }
                     }
                 }
 
@@ -109,20 +125,20 @@ public class WebIntent extends CordovaPlugin {
                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, uri));
                 return true;
             } else if (action.equals("onNewIntent")) {
-            	//save reference to the callback; will be called on "new intent" events
+                //save reference to the callback; will be called on "new intent" events
                 this.onNewIntentCallbackContext = callbackContext;
-        
+
                 if (args.length() != 0) {
                     callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.INVALID_ACTION));
                     return false;
                 }
-                
+
                 PluginResult result = new PluginResult(PluginResult.Status.NO_RESULT);
                 result.setKeepCallback(true); //re-use the callback on intent events
                 callbackContext.sendPluginResult(result);
                 return true;
                 //return result;
-            } else if (action.equals("sendBroadcast")) 
+            } else if (action.equals("sendBroadcast"))
             {
                 if (args.length() != 1) {
                     //return new PluginResult(PluginResult.Status.INVALID_ACTION);
@@ -165,17 +181,17 @@ public class WebIntent extends CordovaPlugin {
 
     @Override
     public void onNewIntent(Intent intent) {
-    	 
+
         if (this.onNewIntentCallbackContext != null) {
-        	PluginResult result = new PluginResult(PluginResult.Status.OK, intent.getDataString());
-        	result.setKeepCallback(true);
+            PluginResult result = new PluginResult(PluginResult.Status.OK, intent.getDataString());
+            result.setKeepCallback(true);
             this.onNewIntentCallbackContext.sendPluginResult(result);
         }
     }
 
-    void startActivity(String action, Uri uri, String type, Map<String, String> extras) {
+    void startActivity(String action, Uri uri, String type, Map<String, Object> extras) {
         Intent i = (uri != null ? new Intent(action, uri) : new Intent(action));
-        
+
         if (type != null && uri != null) {
             i.setDataAndType(uri, type); //Fix the crash problem with android 2.3.6
         } else {
@@ -183,22 +199,42 @@ public class WebIntent extends CordovaPlugin {
                 i.setType(type);
             }
         }
-        
+
         for (String key : extras.keySet()) {
-            String value = extras.get(key);
+            Object v = extras.get(key);
+
             // If type is text html, the extra text must sent as HTML
             if (key.equals(Intent.EXTRA_TEXT) && type.equals("text/html")) {
-                i.putExtra(key, Html.fromHtml(value));
+                String stringValue = ((String)extras.get(key));
+                i.putExtra(key, Html.fromHtml(stringValue));
             } else if (key.equals(Intent.EXTRA_STREAM)) {
                 // allowes sharing of images as attachments.
                 // value in this case should be a URI of a file
-				final CordovaResourceApi resourceApi = webView.getResourceApi();
-                i.putExtra(key, resourceApi.remapUri(Uri.parse(value)));
+                String stringValue = ((String)extras.get(key));
+                final CordovaResourceApi resourceApi = webView.getResourceApi();
+                i.putExtra(key, resourceApi.remapUri(Uri.parse(stringValue)));
             } else if (key.equals(Intent.EXTRA_EMAIL)) {
                 // allows to add the email address of the receiver
-                i.putExtra(Intent.EXTRA_EMAIL, new String[] { value });
+                String stringValue = ((String)extras.get(key));
+                i.putExtra(Intent.EXTRA_EMAIL, new String[] { stringValue });
             } else {
-                i.putExtra(key, value);
+
+                // variable data types
+                if (v instanceof Integer || v instanceof Long) {
+                    long intToUse = ((Number)v).longValue();
+                    i.putExtra(key, intToUse);
+                } else if (v instanceof Boolean) {
+                    boolean boolToUse = ((Boolean)v).booleanValue();
+                    i.putExtra(key, boolToUse);
+                } else if (v instanceof Float || v instanceof Double) {
+                    double floatToUse = ((Number)v).doubleValue();
+                    i.putExtra(key, floatToUse);
+                } else {
+                    String stringToUse = ((String)extras.get(key));
+                    i.putExtra(key, stringToUse);
+                }
+
+
             }
         }
         ((CordovaActivity)this.cordova.getActivity()).startActivity(i);
