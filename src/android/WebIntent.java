@@ -12,6 +12,9 @@ import org.json.JSONObject;
 import android.content.Intent;
 import android.net.Uri;
 import android.text.Html;
+import android.app.Activity;
+import android.os.Bundle;
+import android.util.Log;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
@@ -31,14 +34,42 @@ import org.apache.cordova.PluginResult;
  */
 public class WebIntent extends CordovaPlugin {
 
-    private CallbackContext onNewIntentCallbackContext = null;
+    private CallbackContext callbackContext = null;
+    private static final int REQUEST_CODE = 1;
+
+    public void onActivityResult(int requestCode, int resultCode, Intent intent) {
+        if (requestCode == REQUEST_CODE) {
+            if (resultCode == Activity.RESULT_OK) {
+                try {
+                    JSONObject obj = new JSONObject();
+                    if (intent.getData() != null){
+                        obj.put("uri", intent.getDataString());
+                    }
+                    Bundle bundle = intent.getExtras();
+                    if (bundle != null) {
+                        for (String key : bundle.keySet()) {
+                            Object value = bundle.get(key);
+                            obj.put(key, value.toString());
+                        }
+                    }
+                    this.callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, obj));
+                } catch (JSONException e){
+                    this.callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.JSON_EXCEPTION));
+                    Log.d("WebIntent", "JSONException: onActivityResult()");
+                }
+            } else if (resultCode == Activity.RESULT_CANCELED) {
+                this.callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.INVALID_ACTION));
+            }
+        }
+    }
 
     //public boolean execute(String action, JSONArray args, String callbackId) {
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) {
         try {
+            this.callbackContext = callbackContext;
 
-            if (action.equals("startActivity")) {
+            if (action.startsWith("startActivity")) {
                 if (args.length() != 1) {
                     //return new PluginResult(PluginResult.Status.INVALID_ACTION);
                     callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.INVALID_ACTION));
@@ -78,9 +109,13 @@ public class WebIntent extends CordovaPlugin {
                     }
                 }
 
-                startActivity(obj.getString("action"), uri, type, extrasMap);
-                //return new PluginResult(PluginResult.Status.OK);
-                callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK));
+                if (action.equals("startActivityForResult")) {
+                    startActivity(obj.getString("action"), uri, type, extrasMap, true);
+                } else { // Assume action.equals("startActivity")
+                    startActivity(obj.getString("action"), uri, type, extrasMap, false);
+                    //return new PluginResult(PluginResult.Status.OK);
+                    callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK));
+                }
                 return true;
 
             } else if (action.equals("hasExtra")) {
@@ -125,9 +160,6 @@ public class WebIntent extends CordovaPlugin {
                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, uri));
                 return true;
             } else if (action.equals("onNewIntent")) {
-                //save reference to the callback; will be called on "new intent" events
-                this.onNewIntentCallbackContext = callbackContext;
-
                 if (args.length() != 0) {
                     callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.INVALID_ACTION));
                     return false;
@@ -181,15 +213,12 @@ public class WebIntent extends CordovaPlugin {
 
     @Override
     public void onNewIntent(Intent intent) {
-
-        if (this.onNewIntentCallbackContext != null) {
-            PluginResult result = new PluginResult(PluginResult.Status.OK, intent.getDataString());
-            result.setKeepCallback(true);
-            this.onNewIntentCallbackContext.sendPluginResult(result);
+        if (this.callbackContext != null) {
+            this.callbackContext.success(intent.getDataString());
         }
     }
 
-    void startActivity(String action, Uri uri, String type, Map<String, Object> extras) {
+    void startActivity(String action, Uri uri, String type, Map<String, Object> extras, boolean resultFlag) {
         Intent i = (uri != null ? new Intent(action, uri) : new Intent(action));
 
         if (type != null && uri != null) {
@@ -237,7 +266,12 @@ public class WebIntent extends CordovaPlugin {
 
             }
         }
-        ((CordovaActivity)this.cordova.getActivity()).startActivity(i);
+        if (resultFlag) {
+            this.cordova.setActivityResultCallback(this);
+            ((CordovaActivity)this.cordova.getActivity()).startActivityForResult(i, REQUEST_CODE);
+        } else {
+            ((CordovaActivity)this.cordova.getActivity()).startActivity(i);
+        }
     }
 
     void sendBroadcast(String action, Map<String, String> extras) {

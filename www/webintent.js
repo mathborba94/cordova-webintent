@@ -17,6 +17,14 @@
     WebIntent.prototype.ACTION_CALL = "android.intent.action.CALL";
     WebIntent.prototype.ACTION_SENDTO = "android.intent.action.SENDTO";
 
+    WebIntent.prototype.startActivityForResult = function (params, success, fail) {
+        return cordova.exec(function (args) {
+            success(args);
+        }, function (args) {
+            fail(args);
+        }, 'WebIntent', 'startActivityForResult', [params]);
+    };
+
     WebIntent.prototype.startActivity = function(params, success, fail) {
         return cordova.exec(function(args) {
             success(args);
@@ -66,7 +74,7 @@
     };
 
     window.webintent = new WebIntent();
-    
+
     // backwards compatibility
     window.plugins = window.plugins || {};
     window.plugins.webintent = window.webintent;
