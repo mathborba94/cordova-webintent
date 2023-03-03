@@ -49,6 +49,7 @@ public class WebIntent extends CordovaPlugin {
                     if (bundle != null) {
                         for (String key : bundle.keySet()) {
                             Object value = bundle.get(key);
+                            value = value == null ? "" : value.toString();
                             obj.put(key, value.toString());
                         }
                     }
